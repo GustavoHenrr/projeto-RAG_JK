@@ -8,8 +8,8 @@ e salva na pasta vector_db/.
 
 from pathlib import Path
 
-from langchain_community.vectorstores import FAISS # Usado para carregar a base vetorial criada no build_kb.py
-from langchain_huggingface import HuggingFaceEmbeddings # Usado para transformar as perguntas em vetores
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from base_rag import BaseRAG
 
@@ -31,7 +31,7 @@ class JK_RAG(BaseRAG):
         vector_db_path: str = "vector_db",
         embedding_model_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         k: int = 5,
-        **kwargs
+        **kwargs,
     ):
         """
         Inicializa o RAG.
@@ -67,7 +67,7 @@ class JK_RAG(BaseRAG):
         self.vector_db = FAISS.load_local(
             folder_path=str(self.vector_db_path),
             embeddings=self.embeddings,
-            allow_dangerous_deserialization=True
+            allow_dangerous_deserialization=True,
         )
 
         print("RAG carregado com sucesso!")
@@ -85,7 +85,7 @@ class JK_RAG(BaseRAG):
 
         documentos = self.vector_db.similarity_search(
             query=question,
-            k=self.k
+            k=self.k,
         )
 
         return documentos
@@ -120,18 +120,32 @@ class JK_RAG(BaseRAG):
 
     def _gerar_resposta(self, system_prompt: str, user_prompt: str) -> str:
         """
-        Chama o modelo de linguagem usando a função auxiliar da BaseRAG.
+        Chama o modelo de linguagem para gerar a resposta.
 
-        Observação:
-        No PDF e no example_rag.py aparece o nome _generate_response.
-        Porém, no base_rag.py fornecido, o método está como self_generate_response.
-        Por isso usamos self_generate_response aqui.
+        Esta versão chama diretamente o modelo recebido em llm_instance,
+        evitando problemas de diferença de nome entre métodos auxiliares
+        como _generate_response ou self_generate_response.
         """
 
-        return self.self_generate_response(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt
-        )
+        if system_prompt is None or system_prompt.strip() == "":
+            chat_history = [
+                ("user", user_prompt)
+            ]
+        else:
+            chat_history = [
+                ("system", system_prompt),
+                ("user", user_prompt)
+            ]
+
+        response = self.llm_instance.invoke(chat_history, **self.params)
+
+        if hasattr(response, "content"):
+            return response.content
+
+        if hasattr(response, "text"):
+            return response.text
+
+        return str(response)
 
     def answer_question(self, question: str) -> str:
         """
@@ -180,7 +194,7 @@ Resposta:
 
         resposta = self._gerar_resposta(
             system_prompt=system_prompt.strip(),
-            user_prompt=user_prompt.strip()
+            user_prompt=user_prompt.strip(),
         )
 
         return resposta
