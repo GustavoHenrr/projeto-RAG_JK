@@ -74,7 +74,10 @@ class JK_RAG(BaseRAG):
 
     def _buscar_chunks_relevantes(self, question: str):
         """
-        Busca os chunks mais relevantes na base vetorial.
+        Busca os chunks mais relevantes usando MMR.
+
+        O MMR tenta equilibrar relevância e diversidade,
+        evitando recuperar vários chunks muito parecidos entre si.
 
         Args:
             question (str): Pergunta feita pelo usuário.
@@ -82,11 +85,16 @@ class JK_RAG(BaseRAG):
         Returns:
             list: Lista de documentos/chunks recuperados.
         """
-
-        documentos = self.vector_db.similarity_search(
-            query=question,
-            k=self.k,
+        retriever = self.vector_db.as_retriever(
+            search_type="mmr",
+            search_kwargs={
+                "k": self.k,
+                "fetch_k": max(30, self.k * 5),
+                "lambda_mult": 0.5,
+            },
         )
+        
+        documentos = retriever.invoke(question)
 
         return documentos
 
@@ -172,24 +180,36 @@ class JK_RAG(BaseRAG):
 Você é um assistente acadêmico especializado em responder perguntas sobre a biografia de Juscelino Kubitschek.
 
 Responda em português.
-Use apenas as informações presentes no contexto fornecido.
+Use exclusivamente as informações presentes no CONTEXTO RECUPERADO.
 Não use conhecimento externo.
+Não complete lacunas com suposições.
+Não invente datas, cargos, instituições, nomes, partidos ou eventos.
+Não mencione fatos que não estejam explicitamente no contexto.
 
-Se o contexto não trouxer informação suficiente para responder com segurança, diga claramente:
+Se o contexto recuperado não trouxer a resposta de forma clara, responda exatamente:
 "Não encontrei informação suficiente no contexto recuperado."
 
-Sempre que possível, mencione as páginas do PDF usadas como base.
+Quando responder, cite a página ou as páginas usadas como base, se elas estiverem disponíveis no contexto.
+A resposta deve ser objetiva e fiel ao texto.
 """
 
         user_prompt = f"""
-Contexto recuperado:
-
+CONTEXTO RECUPERADO:
 {contexto}
 
-Pergunta:
+PERGUNTA:
 {question}
 
-Resposta:
+INSTRUÇÕES PARA A RESPOSTA:
+- Responda apenas com base no CONTEXTO RECUPERADO.
+- Se a informação não aparecer claramente no contexto, diga:
+  "Não encontrei informação suficiente no contexto recuperado."
+- Não use conhecimento externo.
+- Não invente informações.
+- Não generalize além do que está escrito no contexto.
+- Quando possível, mencione a página usada.
+
+RESPOSTA:
 """
 
         resposta = self._gerar_resposta(
